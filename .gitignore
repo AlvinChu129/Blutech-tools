@@ -1,0 +1,6 @@
+# Python
+__pycache__/
+*.pyc
+
+# 舊格式（自動遷移產生，不需版控）
+spec.json
