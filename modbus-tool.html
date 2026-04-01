@@ -138,24 +138,25 @@
 
       </div>
 
-      <!-- 下方：點位詳細（全寬） -->
-      <section class="card detail-panel" id="detail-panel">
-        <div class="detail-header">
-          <span class="section-label" style="margin:0">點位詳細讀值
-            — <span id="detail-unit-label" class="detail-uid">—</span>
-          </span>
-          <div class="detail-actions">
-            <button class="btn btn-outline btn-sm" id="detail-refresh-button" type="button" disabled>重新讀取</button>
-            <button class="btn btn-ghost btn-sm" id="close-detail-button" type="button">✕</button>
-          </div>
-        </div>
-        <div id="detail-content" class="detail-empty">
-          <span>點選設備列的「詳細」查看完整讀值</span>
-        </div>
-      </section>
-
     </main>
   </div>
+
+  <!-- 點位詳細 Side Drawer -->
+  <div class="drawer-overlay" id="drawer-overlay"></div>
+  <aside class="detail-drawer" id="detail-panel">
+    <div class="detail-header">
+      <span class="section-label" style="margin:0">點位詳細讀值
+        — <span id="detail-unit-label" class="detail-uid">—</span>
+      </span>
+      <div class="detail-actions">
+        <button class="btn btn-outline btn-sm" id="detail-refresh-button" type="button" disabled>重新讀取</button>
+        <button class="btn btn-ghost btn-sm" id="close-detail-button" type="button">✕</button>
+      </div>
+    </div>
+    <div id="detail-content" class="detail-empty">
+      <span>點選設備列的「詳細」查看完整讀值</span>
+    </div>
+  </aside>
 
   <!-- 點位編輯 Modal -->
   <div id="spec-modal" class="modal-overlay" hidden>
