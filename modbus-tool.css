@@ -391,13 +391,51 @@ code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 11px; }
 .log-entry.is-error { border-color: #fecaca; background: var(--danger-bg); }
 .log-entry.is-error strong { color: var(--danger); }
 
-/* ── Detail panel ── */
-.detail-panel { padding: 12px 14px; }
+/* ── Detail Drawer ── */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.18);
+  z-index: 149;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.drawer-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.detail-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 440px;
+  max-width: 92vw;
+  height: 100vh;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -6px 0 28px rgba(0,0,0,0.1);
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+.detail-drawer.is-open {
+  transform: translateX(0);
+}
 .detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+#detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
 }
 .detail-uid { font-weight: 600; color: var(--primary); }
 .detail-actions { display: flex; gap: 5px; }
