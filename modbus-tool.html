@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Modbus TCP 驗證工具</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+TC:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./modbus-tool.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <header class="top-bar">
+      <span class="brand">Modbus TCP 驗證工具</span>
+      <div class="top-bar-right">
+        <button class="btn btn-ghost btn-sm" id="edit-spec-button" type="button">編輯點位</button>
+        <div id="connection-state" class="status-pill">尚未讀取</div>
+      </div>
+    </header>
+
+    <main class="workspace">
+
+      <!-- 連線設定列 -->
+      <section class="card settings-bar">
+        <form id="settings-form" class="settings-inline">
+          <div class="sf">
+            <span>IP / Host</span>
+            <input name="ip" type="text" placeholder="192.168.1.100" value="111.70.14.174" required />
+          </div>
+          <div class="sf">
+            <span>Port</span>
+            <input name="port" type="number" min="1" max="65535" value="502" required />
+          </div>
+          <div class="sf">
+            <span>Function Code</span>
+            <input name="functionCode" type="text" value="FC03" placeholder="FC03" required />
+          </div>
+          <div class="sf">
+            <span>Timeout (ms)</span>
+            <input name="timeoutMs" type="number" min="100" max="60000" step="100" value="2000" />
+          </div>
+          <div class="sf">
+            <span>Float Byte Order</span>
+            <select name="floatOrder">
+              <option value="ABCD" selected>ABCD</option>
+              <option value="BADC">BADC</option>
+              <option value="CDAB">CDAB</option>
+              <option value="DCBA">DCBA</option>
+            </select>
+          </div>
+          <div class="sf">
+            <span>Address Base</span>
+            <select name="addressBase">
+              <option value="0" selected>0</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+          <div class="sf">
+            <span>輪詢間隔 (ms)</span>
+            <input name="pollIntervalMs" type="number" min="1000" max="600000" step="500" value="5000" />
+          </div>
+        </form>
+      </section>
+
+      <!-- 中排：設備批次驗證 + Log 並排 -->
+      <div class="middle-grid">
+
+        <section class="card verify-panel">
+
+          <!-- 工具列 row 1：設備數量 + 操作按鈕 + 摘要 -->
+          <div class="verify-toolbar">
+            <div class="verify-left">
+              <div class="device-inputs">
+                <div class="di-field">
+                  <span>Unit 起始</span>
+                  <input id="unit-start" type="number" min="0" max="254" value="1" />
+                </div>
+                <div class="di-sep">—</div>
+                <div class="di-field">
+                  <span>設備總數</span>
+                  <input id="device-count" type="number" min="1" max="255" value="24" />
+                </div>
+              </div>
+              <div class="verify-buttons">
+                <button class="btn btn-ghost btn-sm" id="probe-button" type="button">TCP 測試</button>
+                <button class="btn btn-primary" id="verify-all-button" type="button">▶ 開始驗證</button>
+                <button class="btn btn-outline" id="poll-all-button" type="button">⟳ 持續輪詢</button>
+                <button class="btn btn-outline" id="stop-verify-button" type="button" disabled>■ 停止</button>
+              </div>
+            </div>
+            <div class="verify-summary">
+              <div class="sum-chip ok-chip"><strong id="ok-count">0</strong><span>正常</span></div>
+              <div class="sum-chip fail-chip"><strong id="fail-count">0</strong><span>失敗</span></div>
+              <div class="sum-chip pending-chip"><strong id="pending-count">0</strong><span>待測</span></div>
+              <span id="progress-text" class="progress-text"></span>
+            </div>
+          </div>
+
+          <!-- 工具列 row 2：批量指派類型 -->
+          <div class="bulk-assign-row">
+            <span class="bulk-label">批量指派</span>
+            <span class="bulk-hint">Unit</span>
+            <input id="bulk-from" type="number" min="0" max="255" value="1" />
+            <span class="bulk-hint">~</span>
+            <input id="bulk-to" type="number" min="0" max="255" value="20" />
+            <span class="bulk-hint">設為</span>
+            <select id="bulk-type"></select>
+            <button class="btn btn-outline btn-sm" id="bulk-assign-button" type="button">套用</button>
+          </div>
+
+          <div class="device-table-wrap">
+            <table class="device-table">
+              <thead>
+                <tr>
+                  <th>Unit ID</th>
+                  <th>設備類型</th>
+                  <th>狀態</th>
+                  <th>延遲 (ms)</th>
+                  <th>讀值摘要</th>
+                  <th>最後更新</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="device-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card log-card">
+          <div class="log-card-header">
+            <span class="section-label" style="margin:0">Event Log</span>
+            <button class="btn btn-ghost btn-sm" id="clear-log-display-button" type="button">清除</button>
+          </div>
+          <div id="log-panel" class="log-panel" aria-live="polite"></div>
+        </section>
+
+      </div>
+
+      <!-- 下方：點位詳細（全寬） -->
+      <section class="card detail-panel" id="detail-panel">
+        <div class="detail-header">
+          <span class="section-label" style="margin:0">點位詳細讀值
+            — <span id="detail-unit-label" class="detail-uid">—</span>
+          </span>
+          <div class="detail-actions">
+            <button class="btn btn-outline btn-sm" id="detail-refresh-button" type="button" disabled>重新讀取</button>
+            <button class="btn btn-ghost btn-sm" id="close-detail-button" type="button">✕</button>
+          </div>
+        </div>
+        <div id="detail-content" class="detail-empty">
+          <span>點選設備列的「詳細」查看完整讀值</span>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- 點位編輯 Modal -->
+  <div id="spec-modal" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>編輯點位定義</span>
+        <button class="modal-close" id="close-modal-button" type="button">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <div class="spec-type-bar">
+          <label class="spec-type-label">
+            <span>編輯類型</span>
+            <select id="spec-type-select"></select>
+          </label>
+          <button class="btn btn-outline btn-sm" id="add-spec-type-button" type="button">+ 新增類型</button>
+          <button class="btn btn-ghost btn-sm" id="del-spec-type-button" type="button">刪除此類型</button>
+        </div>
+        <div class="modal-toolbar">
+          <button class="btn btn-outline btn-sm" id="add-spec-row-button" type="button">+ 新增點位</button>
+          <span class="muted" style="font-size:11px">修改後點「儲存全部」套用，所有類型的點位將寫入 specs.json</span>
+        </div>
+        <div class="modal-table-wrap">
+          <table class="spec-table">
+            <thead>
+              <tr>
+                <th>Offset</th>
+                <th>Description</th>
+                <th>FC</th>
+                <th>Size</th>
+                <th>Data Type</th>
+                <th>Resolution</th>
+                <th>Unit</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="spec-editor-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="cancel-spec-button" type="button">取消</button>
+        <button class="btn btn-primary" id="save-spec-button" type="button">儲存全部</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./modbus-tool.js"></script>
+</body>
+</html>
