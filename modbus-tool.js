@@ -33,7 +33,9 @@ const el = {
   bulkTo:            document.getElementById("bulk-to"),
   bulkType:          document.getElementById("bulk-type"),
   bulkAssignButton:  document.getElementById("bulk-assign-button"),
-  // detail
+  // detail drawer
+  detailPanel:       document.getElementById("detail-panel"),
+  drawerOverlay:     document.getElementById("drawer-overlay"),
   detailUnitLabel:   document.getElementById("detail-unit-label"),
   detailContent:     document.getElementById("detail-content"),
   detailRefreshBtn:  document.getElementById("detail-refresh-button"),
@@ -368,14 +370,16 @@ function openDetail(unitId) {
   state.activeUnitId = unitId;
   el.detailUnitLabel.textContent = `Unit ${unitId}（${d.specName}）`;
   el.detailRefreshBtn.disabled   = false;
+  el.detailPanel.classList.add("is-open");
+  el.drawerOverlay.classList.add("is-open");
   renderDetail(d);
 }
 
 function renderDetail(d) {
   if (!d.rows.length) {
     el.detailContent.innerHTML = "";
+    el.detailContent.className = "detail-empty";
     const empty = document.createElement("div");
-    empty.className = "detail-empty";
     empty.innerHTML = d.status === "fail"
       ? `<span style="color:var(--danger)">讀取失敗：${escHtml(d.error)}</span>`
       : "<span>尚無讀值，請先執行驗證</span>";
@@ -383,6 +387,7 @@ function renderDetail(d) {
     return;
   }
 
+  el.detailContent.className = "";
   el.detailContent.innerHTML = `
     <div class="detail-table-wrap">
       <table class="detail-table">
@@ -416,13 +421,12 @@ function renderDetail(d) {
 
 function closeDetail() {
   state.activeUnitId = null;
+  el.detailPanel.classList.remove("is-open");
+  el.drawerOverlay.classList.remove("is-open");
   el.detailUnitLabel.textContent = "—";
   el.detailRefreshBtn.disabled   = true;
-  el.detailContent.innerHTML     = "";
-  const empty = document.createElement("div");
-  empty.className = "detail-empty";
-  empty.innerHTML = "<span>點選設備列的「詳細」查看完整讀值</span>";
-  el.detailContent.appendChild(empty);
+  el.detailContent.className     = "detail-empty";
+  el.detailContent.innerHTML     = "<span>點選設備列的「詳細」查看完整讀值</span>";
   document.querySelectorAll(".device-table tbody tr").forEach((r) => r.classList.remove("is-active"));
 }
 
@@ -582,6 +586,8 @@ function bindEvents() {
   el.clearLogBtn.addEventListener("click",    () => { el.logPanel.innerHTML = ""; });
   el.detailRefreshBtn.addEventListener("click", refreshDetail);
   el.closeDetailBtn.addEventListener("click",   closeDetail);
+  el.drawerOverlay.addEventListener("click",    closeDetail);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 
   el.editSpecButton.addEventListener("click",    openSpecEditor);
   el.closeModalButton.addEventListener("click",  closeSpecEditor);
