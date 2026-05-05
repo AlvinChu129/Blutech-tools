@@ -16,8 +16,9 @@ HOST = "127.0.0.1"
 PORT = 8765
 BASE_DIR = Path(__file__).resolve().parent
 TRANSACTION_IDS = itertools.count(1)
-SPECS_FILE = BASE_DIR / "specs.json"
-SPEC_FILE  = BASE_DIR / "spec.json"   # 舊格式，讀取後自動遷移
+SPECS_FILE    = BASE_DIR / "specs.json"
+SPEC_FILE     = BASE_DIR / "spec.json"   # 舊格式，讀取後自動遷移
+PROFILES_FILE = BASE_DIR / "profiles.json"
 
 STATIC_FILES = {
     "/": ("modbus-tool.html", "text/html; charset=utf-8"),
@@ -62,6 +63,27 @@ EXCEPTION_CODES = {
 }
 
 _specs: dict[str, list[dict[str, Any]]] = {}
+_profiles: dict[str, dict[str, Any]] = {}
+
+
+def load_profiles() -> dict[str, dict[str, Any]]:
+    if PROFILES_FILE.exists():
+        try:
+            data = json.loads(PROFILES_FILE.read_text("utf-8"))
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    return {}
+
+
+def save_profiles_data(payload: Any) -> dict[str, Any]:
+    global _profiles
+    if not isinstance(payload, dict):
+        raise ValueError("Profiles 必須是物件")
+    _profiles = payload
+    PROFILES_FILE.write_text(json.dumps(_profiles, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"profiles": _profiles}
 
 
 def load_specs() -> dict[str, list[dict[str, Any]]]:
@@ -368,6 +390,9 @@ class ModbusToolHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/profiles":
+            self.send_json({"profiles": _profiles})
+            return
         if parsed.path == "/api/specs":
             self.send_json({"specs": _specs, "names": list(_specs.keys())})
             return
@@ -419,7 +444,9 @@ class ModbusToolHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         try:
             payload = parse_json(self)
-            if parsed.path == "/api/specs":
+            if parsed.path == "/api/profiles":
+                data = save_profiles_data(payload)
+            elif parsed.path == "/api/specs":
                 data = update_all_specs(payload)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND, "Not Found")
@@ -442,8 +469,9 @@ class ModbusToolHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    global _specs
-    _specs = load_specs()
+    global _specs, _profiles
+    _specs    = load_specs()
+    _profiles = load_profiles()
     server = ThreadingHTTPServer((HOST, PORT), ModbusToolHandler)
     print(f"Modbus TCP 驗證工具已啟動: http://{HOST}:{PORT}")
     try:

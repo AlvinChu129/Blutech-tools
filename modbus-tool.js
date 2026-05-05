@@ -4,6 +4,7 @@ const API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:8765" 
 const state = {
   specs: {},          // { 電表: [...], 水流量: [...], 溫度計: [...] }
   specNames: [],      // ['電表', '水流量', '溫度計']
+  profiles: {},       // { "客戶A": { ip, port, ... } }
   devices: [],        // [{ unitId, specName, status, latency, summary, lastTs, rows, reqHex, resHex, error }]
   verifyTimer: null,
   verifyBusy: false,
@@ -43,6 +44,20 @@ const el = {
   // log
   logPanel:          document.getElementById("log-panel"),
   clearLogBtn:       document.getElementById("clear-log-display-button"),
+  logFab:            document.getElementById("log-fab"),
+  logFabBadge:       document.getElementById("log-fab-badge"),
+  logFloat:          document.getElementById("log-float"),
+  closeLogButton:    document.getElementById("close-log-button"),
+  logToast:          document.getElementById("log-toast"),
+  logToastTitle:     document.getElementById("log-toast-title"),
+  logToastDetail:    document.getElementById("log-toast-detail"),
+  // profile bar
+  profileSelect:          document.getElementById("profile-select"),
+  profileDeleteButton:    document.getElementById("profile-delete-button"),
+  profileNameInput:       document.getElementById("profile-name-input"),
+  profileSaveButton:      document.getElementById("profile-save-button"),
+  profileReminder:        document.getElementById("profile-reminder"),
+  profileReminderDismiss: document.getElementById("profile-reminder-dismiss"),
   // spec modal
   editSpecButton:    document.getElementById("edit-spec-button"),
   specModal:         document.getElementById("spec-modal"),
@@ -95,6 +110,33 @@ function escHtml(str) {
     .replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ── Floating Log ───────────────────────────────────────────────────────────
+let _unreadLogs = 0;
+let _toastTimer = null;
+
+function isLogOpen() { return el.logFloat.classList.contains("is-open"); }
+
+function openLog() {
+  el.logFloat.classList.add("is-open");
+  _unreadLogs = 0;
+  el.logFabBadge.classList.remove("is-visible");
+}
+
+function closeLog() { el.logFloat.classList.remove("is-open"); }
+function toggleLog() { isLogOpen() ? closeLog() : openLog(); }
+
+function showToast(title, detail, isError) {
+  if (isLogOpen()) return;
+  el.logToastTitle.textContent  = title;
+  el.logToastDetail.textContent = detail;
+  el.logToast.classList.toggle("is-error", isError);
+  el.logToast.classList.remove("is-visible");
+  void el.logToast.offsetWidth;          // force reflow to restart transition
+  el.logToast.classList.add("is-visible");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.logToast.classList.remove("is-visible"), 3000);
+}
+
 function addLog(title, detail, type = "info") {
   const entry = document.createElement("article");
   entry.className = `log-entry${type === "error" ? " is-error" : ""}`;
@@ -106,6 +148,151 @@ function addLog(title, detail, type = "info") {
   time.textContent = ts();
   entry.append(strong, p, time);
   el.logPanel.prepend(entry);
+
+  showToast(title, detail, type === "error");
+  if (!isLogOpen()) {
+    _unreadLogs++;
+    el.logFabBadge.textContent = _unreadLogs > 99 ? "99+" : String(_unreadLogs);
+    el.logFabBadge.classList.add("is-visible");
+  }
+}
+
+// ── Profile bar ────────────────────────────────────────────────────────────
+function getCurrentProfileSettings() {
+  const s = getSettings();
+  return {
+    ...s,
+    unitStart:   parseInt(el.unitStart.value,   10) || 1,
+    deviceCount: parseInt(el.deviceCount.value, 10) || 1,
+  };
+}
+
+function settingsMatchAnyProfile() {
+  const keys    = ["ip","port","functionCode","timeoutMs","floatOrder","addressBase","pollIntervalMs","unitStart","deviceCount"];
+  const current = getCurrentProfileSettings();
+  return Object.values(state.profiles).some((saved) =>
+    keys.every((k) => String(current[k]) === String(saved[k]))
+  );
+}
+
+function showProfileReminder() { el.profileReminder.hidden = false; }
+function hideProfileReminder() { el.profileReminder.hidden = true; }
+
+function checkUnsavedProfile() {
+  if (el.profileSelect.value) return;   // a named profile is selected — no reminder needed
+  const ip = String(el.form.elements["ip"].value || "").trim();
+  if (!ip) return;
+  if (!settingsMatchAnyProfile()) showProfileReminder();
+}
+
+function populateProfileSelect() {
+  const names = Object.keys(state.profiles);
+  el.profileSelect.innerHTML =
+    '<option value="">— 選擇設定檔 —</option>' +
+    names.map((n) => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join("");
+}
+
+function loadProfile(name) {
+  const p = state.profiles[name];
+  if (!p) return;
+  el.form.elements["ip"].value             = p.ip             ?? "";
+  el.form.elements["port"].value           = p.port           ?? 502;
+  el.form.elements["functionCode"].value   = p.functionCode   ?? "FC03";
+  el.form.elements["timeoutMs"].value      = p.timeoutMs      ?? 2000;
+  el.form.elements["floatOrder"].value     = p.floatOrder     ?? "ABCD";
+  el.form.elements["addressBase"].value    = String(p.addressBase ?? 0);
+  el.form.elements["pollIntervalMs"].value = p.pollIntervalMs ?? 5000;
+  if (p.unitStart   != null) el.unitStart.value   = p.unitStart;
+  if (p.deviceCount != null) el.deviceCount.value = p.deviceCount;
+
+  // Restore device type assignments
+  const deviceTypes = p.deviceTypes || {};
+  const start       = parseInt(String(p.unitStart ?? 1), 10) || 1;
+  const count       = parseInt(String(p.deviceCount ?? 1), 10) || 1;
+  const defaultType = state.specNames[0] || "";
+  state.devices = [];
+  for (let i = 0; i < count; i++) {
+    const uid = start + i;
+    state.devices.push({
+      unitId:   uid,
+      specName: deviceTypes[String(uid)] || defaultType,
+      status:   "pending",
+      latency:  null,
+      lastTs:   "",
+      rows:     [],
+      reqHex:   "",
+      resHex:   "",
+      error:    "",
+    });
+  }
+  renderDeviceTable();
+  updateSummaryChips();
+  closeDetail();
+
+  el.profileNameInput.value       = name;
+  el.profileDeleteButton.disabled = false;
+  hideProfileReminder();
+  addLog("設定檔已載入", `「${name}」— ${p.ip}:${p.port}`);
+}
+
+async function saveProfile() {
+  const name = el.profileNameInput.value.trim();
+  if (!name) { alert("請輸入設定檔名稱"); return; }
+  const s = getSettings();
+  const deviceTypes = {};
+  state.devices.forEach((d) => { deviceTypes[String(d.unitId)] = d.specName; });
+  state.profiles[name] = {
+    ...s,
+    unitStart:   parseInt(el.unitStart.value,   10) || 1,
+    deviceCount: parseInt(el.deviceCount.value, 10) || 1,
+    deviceTypes,
+  };
+  try {
+    await apiFetch("/api/profiles", state.profiles, "PUT");
+    populateProfileSelect();
+    el.profileSelect.value          = name;
+    el.profileDeleteButton.disabled = false;
+    hideProfileReminder();
+    addLog("設定檔已儲存", `「${name}」已寫入 profiles.json`);
+  } catch (err) {
+    addLog("儲存設定檔失敗", err instanceof Error ? err.message : String(err), "error");
+  }
+}
+
+async function deleteProfile() {
+  const name = el.profileSelect.value;
+  if (!name) return;
+  if (!confirm(`確定刪除設定檔「${name}」？`)) return;
+  delete state.profiles[name];
+  try {
+    await apiFetch("/api/profiles", state.profiles, "PUT");
+    populateProfileSelect();
+    el.profileNameInput.value        = "";
+    el.profileDeleteButton.disabled  = true;
+    addLog("設定檔已刪除", `「${name}」已從 profiles.json 移除`);
+  } catch (err) {
+    addLog("刪除設定檔失敗", err instanceof Error ? err.message : String(err), "error");
+  }
+}
+
+// ── Meter column definitions ───────────────────────────────────────────────
+const METER_COLS = [
+  { key: "R相電壓",   unit: "V"   },
+  { key: "S相電壓",   unit: "V"   },
+  { key: "T相電壓",   unit: "V"   },
+  { key: "R相電流",   unit: "A"   },
+  { key: "S相電流",   unit: "A"   },
+  { key: "T相電流",   unit: "A"   },
+  { key: "R相功率",   unit: "kW"  },
+  { key: "S相功率",   unit: "kW"  },
+  { key: "T相功率",   unit: "kW"  },
+  { key: "累積總電度", unit: "kWh" },
+  { key: "功率因數",   unit: ""    },
+];
+
+function extractChineseName(desc) {
+  const m = desc.match(/\(([^)]+)\)/);
+  return m ? m[1] : desc;
 }
 
 // ── Type selects (shared helper) ───────────────────────────────────────────
@@ -135,7 +322,6 @@ function buildDeviceList() {
       specName: prevMap.get(uid) || defaultType,
       status:   "pending",
       latency:  null,
-      summary:  "",
       lastTs:   "",
       rows:     [],
       reqHex:   "",
@@ -172,19 +358,46 @@ function deviceRowHtml(d) {
   const lat   = d.latency != null
     ? `<span class="device-latency">${d.latency}</span>`
     : `<span class="muted">—</span>`;
-  const sum   = d.summary
-    ? `<span class="device-summary has-value">${escHtml(d.summary)}</span>`
-    : `<span class="device-summary">${d.error ? escHtml(d.error) : "—"}</span>`;
   const t     = d.lastTs ? `<span class="device-time">${d.lastTs}</span>` : `<span class="muted">—</span>`;
+
+  let meterCells, otherCell;
+
+  if (d.specName === "電表" && d.rows.length) {
+    const valueMap = {};
+    d.rows.forEach((r) => { valueMap[extractChineseName(r.description)] = r; });
+    meterCells = METER_COLS.map((col) => {
+      const row = valueMap[col.key];
+      if (!row) return `<td class="meter-cell muted">—</td>`;
+      const ok  = Number.isFinite(row.value);
+      return `<td class="meter-cell">` +
+        `<span class="meter-value${ok ? "" : " is-error"}">${ok ? row.value : "NaN"}</span>` +
+        (col.unit ? `<span class="meter-unit"> ${col.unit}</span>` : "") +
+        `</td>`;
+    }).join("");
+    otherCell = `<td class="meter-cell muted">—</td>`;
+  } else if (d.rows.length) {
+    meterCells = METER_COLS.map(() => `<td class="meter-cell muted">—</td>`).join("");
+    const parts = d.rows.map((r) => {
+      const cn  = extractChineseName(r.description);
+      const val = Number.isFinite(r.value) ? r.value : "NaN";
+      return `${escHtml(cn)}: ${val}${escHtml(r.unit)}`;
+    }).join("<br>");
+    otherCell = `<td class="other-cell">${parts}</td>`;
+  } else {
+    meterCells = METER_COLS.map(() => `<td class="meter-cell muted">—</td>`).join("");
+    const msg  = d.status === "fail" ? `<span class="other-error">${escHtml(d.error)}</span>` : `<span class="muted">—</span>`;
+    otherCell  = `<td class="other-cell">${msg}</td>`;
+  }
 
   return `
     <td><strong style="font-family:'IBM Plex Mono',monospace">${d.unitId}</strong></td>
     <td><select class="dev-type-select">${typeOptions}</select></td>
     <td>${badge}</td>
     <td>${lat}</td>
-    <td>${sum}</td>
-    <td>${t}</td>
     <td><button type="button" class="btn btn-ghost btn-xs" data-action="detail">詳細</button></td>
+    ${meterCells}
+    ${otherCell}
+    <td>${t}</td>
   `;
 }
 
@@ -254,11 +467,6 @@ async function verifyDevice(d, settings) {
     d.resHex  = result.rawResponseHex || "";
     d.error   = "";
 
-    // 摘要：前 2 個點位
-    d.summary = result.rows.slice(0, 2)
-      .map((r) => `${r.description.replace(/\(.*\)/, "").trim()} ${Number.isFinite(r.value) ? r.value : "NaN"}${r.unit}`)
-      .join("  |  ");
-
     if (d.unitId === state.activeUnitId) renderDetail(d);
     el.connectionState.textContent = "設備回應正常";
     el.connectionState.className   = "status-pill is-ok";
@@ -267,8 +475,8 @@ async function verifyDevice(d, settings) {
     d.status  = "fail";
     d.latency = null;
     d.lastTs  = ts();
+    d.rows    = [];
     d.error   = err instanceof Error ? err.message : String(err);
-    d.summary = "";
     addLog(`Unit ${d.unitId} 讀取失敗`, d.error, "error");
   }
 
@@ -279,6 +487,7 @@ async function verifyDevice(d, settings) {
 // ── Verify all ─────────────────────────────────────────────────────────────
 async function verifyAll() {
   if (state.verifyBusy) return;
+  checkUnsavedProfile();
   state.verifyBusy = true;
   setBusyUI(true);
   buildDeviceList();
@@ -305,6 +514,7 @@ async function verifyAll() {
 // ── Poll all ───────────────────────────────────────────────────────────────
 async function startPollAll() {
   if (state.verifyBusy) return;
+  checkUnsavedProfile();
   buildDeviceList();
   state.verifyBusy = true;
   setBusyUI(true);
@@ -576,6 +786,15 @@ async function saveSpec() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 function bindEvents() {
+  el.profileSelect.addEventListener("change", (e) => {
+    const name = e.target.value;
+    if (name) loadProfile(name);
+    else { el.profileNameInput.value = ""; el.profileDeleteButton.disabled = true; }
+  });
+  el.profileSaveButton.addEventListener("click",   saveProfile);
+  el.profileDeleteButton.addEventListener("click", deleteProfile);
+  el.profileReminderDismiss.addEventListener("click", hideProfileReminder);
+
   el.probeButton.addEventListener("click",      probeConnection);
   el.verifyAllButton.addEventListener("click",  verifyAll);
   el.pollAllButton.addEventListener("click",    startPollAll);
@@ -583,7 +802,9 @@ function bindEvents() {
 
   el.bulkAssignButton.addEventListener("click", bulkAssign);
 
-  el.clearLogBtn.addEventListener("click",    () => { el.logPanel.innerHTML = ""; });
+  el.logFab.addEventListener("click",        toggleLog);
+  el.closeLogButton.addEventListener("click", closeLog);
+  el.clearLogBtn.addEventListener("click",   () => { el.logPanel.innerHTML = ""; _unreadLogs = 0; el.logFabBadge.classList.remove("is-visible"); });
   el.detailRefreshBtn.addEventListener("click", refreshDetail);
   el.closeDetailBtn.addEventListener("click",   closeDetail);
   el.drawerOverlay.addEventListener("click",    closeDetail);
@@ -606,12 +827,18 @@ function bindEvents() {
 
 async function init() {
   try {
-    const res  = await fetch(`${API_BASE}/api/specs`);
-    const data = await res.json();
-    state.specs     = data.specs;
-    state.specNames = data.names;
+    const [specsRes, profilesRes] = await Promise.all([
+      fetch(`${API_BASE}/api/specs`),
+      fetch(`${API_BASE}/api/profiles`),
+    ]);
+    const specsData    = await specsRes.json();
+    const profilesData = await profilesRes.json();
+    state.specs     = specsData.specs;
+    state.specNames = specsData.names;
+    state.profiles  = profilesData.profiles || {};
 
     populateTypeSelects();
+    populateProfileSelect();
     bindEvents();
     buildDeviceList();
 

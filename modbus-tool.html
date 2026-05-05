@@ -24,6 +24,21 @@
 
       <!-- 連線設定列 -->
       <section class="card settings-bar">
+        <div class="profile-bar">
+          <span class="profile-bar-label">客戶設定檔</span>
+          <select id="profile-select">
+            <option value="">— 選擇設定檔 —</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="profile-delete-button" type="button" disabled>刪除</button>
+          <div class="profile-bar-sep"></div>
+          <input id="profile-name-input" type="text" placeholder="輸入名稱後儲存" />
+          <button class="btn btn-outline btn-sm" id="profile-save-button" type="button">儲存</button>
+        </div>
+        <div id="profile-reminder" class="profile-reminder" hidden>
+          <span class="profile-reminder-icon">⚠</span>
+          <span class="profile-reminder-text">目前連線設定尚未儲存至任何設定檔</span>
+          <button class="btn btn-ghost btn-xs" id="profile-reminder-dismiss" type="button">×</button>
+        </div>
         <form id="settings-form" class="settings-inline">
           <div class="sf">
             <span>IP / Host</span>
@@ -118,9 +133,20 @@
                   <th>設備類型</th>
                   <th>狀態</th>
                   <th>延遲 (ms)</th>
-                  <th>讀值摘要</th>
-                  <th>最後更新</th>
                   <th></th>
+                  <th>R相電壓</th>
+                  <th>S相電壓</th>
+                  <th>T相電壓</th>
+                  <th>R相電流</th>
+                  <th>S相電流</th>
+                  <th>T相電流</th>
+                  <th>R相功率</th>
+                  <th>S相功率</th>
+                  <th>T相功率</th>
+                  <th>累積總電度</th>
+                  <th>功率因數</th>
+                  <th>其他</th>
+                  <th>最後更新</th>
                 </tr>
               </thead>
               <tbody id="device-table-body"></tbody>
@@ -128,13 +154,6 @@
           </div>
         </section>
 
-        <section class="card log-card">
-          <div class="log-card-header">
-            <span class="section-label" style="margin:0">Event Log</span>
-            <button class="btn btn-ghost btn-sm" id="clear-log-display-button" type="button">清除</button>
-          </div>
-          <div id="log-panel" class="log-panel" aria-live="polite"></div>
-        </section>
 
       </div>
 
@@ -201,6 +220,30 @@
         <button class="btn btn-primary" id="save-spec-button" type="button">儲存全部</button>
       </div>
     </div>
+  </div>
+
+  <!-- Floating Event Log -->
+  <div class="log-float" id="log-float">
+    <div class="log-float-header">
+      <span class="section-label" style="margin:0">Event Log</span>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="btn btn-ghost btn-sm" id="clear-log-display-button" type="button">清除</button>
+        <button class="btn btn-ghost btn-sm" id="close-log-button" type="button">✕</button>
+      </div>
+    </div>
+    <div id="log-panel" class="log-panel" aria-live="polite"></div>
+  </div>
+
+  <!-- Log FAB -->
+  <button class="log-fab" id="log-fab" type="button" aria-label="Event Log">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <span class="log-fab-badge" id="log-fab-badge">0</span>
+  </button>
+
+  <!-- Log Toast -->
+  <div class="log-toast" id="log-toast">
+    <strong class="log-toast-title" id="log-toast-title"></strong>
+    <p class="log-toast-detail" id="log-toast-detail"></p>
   </div>
 
   <script src="./modbus-tool.js"></script>
